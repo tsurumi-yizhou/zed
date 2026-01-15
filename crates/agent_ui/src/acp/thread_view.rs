@@ -56,7 +56,11 @@ use ui::{
 };
 use util::defer;
 use util::{ResultExt, size::format_file_size, time::duration_alt_display};
-use workspace::{CollaboratorId, NewTerminal, Toast, Workspace, notifications::NotificationId};
+use workspace::{
+    CollaboratorId, NewTerminal, Toast, Workspace,
+    item::{self, Item, ItemEvent},
+    notifications::NotificationId,
+};
 use zed_actions::agent::{Chat, ToggleModelSelector};
 use zed_actions::assistant::OpenRulesLibrary;
 
@@ -79,6 +83,7 @@ use crate::{
     ToggleBurnMode, ToggleProfileSelector,
 };
 
+const MAX_TAB_TITLE_LEN: usize = 16;
 const MAX_COLLAPSED_LINES: usize = 3;
 const STOPWATCH_THRESHOLD: Duration = Duration::from_secs(30);
 const TOKEN_THRESHOLD: u64 = 250;
@@ -406,6 +411,8 @@ struct LoadingView {
     _load_task: Task<()>,
     _update_title_task: Task<anyhow::Result<()>>,
 }
+
+impl EventEmitter<ItemEvent> for AcpThreadView {}
 
 impl AcpThreadView {
     pub fn new(
@@ -1939,6 +1946,7 @@ impl AcpThreadView {
                     });
                 }
                 self.history.update(cx, |history, cx| history.refresh(cx));
+                cx.emit(ItemEvent::UpdateTab);
             }
             AcpThreadEvent::PromptCapabilitiesUpdated => {
                 self.prompt_capabilities
@@ -8364,6 +8372,26 @@ fn plan_label_markdown_style(
             ..default_md_style.base_text_style
         },
         ..default_md_style
+    }
+}
+
+impl Item for AcpThreadView {
+    type Event = ItemEvent;
+
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        util::truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN).into()
+    }
+
+    fn to_item_events(event: &Self::Event, mut f: impl FnMut(item::ItemEvent)) {
+        f(*event)
+    }
+
+    fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
+        Some(self.title(cx).to_string().into())
+    }
+
+    fn telemetry_event_text(&self) -> Option<&'static str> {
+        Some("AcpThreadView")
     }
 }
 
