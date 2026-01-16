@@ -128,7 +128,7 @@ impl SidebarButtons {
                 .attach(menu_attach)
                 .trigger(move |is_active, _window, _cx| {
                     IconButton::new((name, is_active_button as u64), icon)
-                        .icon_size(IconSize::Small)
+                        .icon_size(IconSize::Medium)
                         .toggle_state(is_active_button)
                         .on_click({
                             let action = action.boxed_clone();
@@ -246,13 +246,13 @@ impl Render for SidebarButtons {
         v_flex()
             .h_full()
             .justify_between()
-            .gap_1()
-            .py_1()
+            .gap_2()
+            .py_2()
             .px_0p5()
-            .child(v_flex().gap_1().children(top_buttons))
+            .child(v_flex().gap_2().children(top_buttons))
             .when(has_top_buttons && has_bottom_buttons, |this| {
                 this.child(Divider::horizontal().color(DividerColor::Border))
             })
-            .child(v_flex().gap_1().children(bottom_buttons))
+            .child(v_flex().gap_2().children(bottom_buttons))
     }
 }

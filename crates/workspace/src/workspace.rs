@@ -6586,24 +6586,24 @@ impl Workspace {
         let colors = cx.theme().colors();
         let is_zoomed = self.zoomed.is_some();
 
-        Some(
-            div()
-                .flex()
-                .flex_none()
-                .overflow_hidden()
-                .when(is_open, |this| {
-                    this.bg(colors.surface_background)
-                        .when(!is_zoomed, |inner| {
-                            inner
-                                .rounded_lg()
-                                .border_1()
-                                .border_color(colors.border)
-                                .shadow_md()
-                        })
-                })
-                .child(dock.clone())
-                .when(is_open, |this| this.children(leader_border)),
-        )
+        let dock_element = div()
+            .flex()
+            .flex_none()
+            .overflow_hidden()
+            .child(dock.clone())
+            .when(is_open, |this| {
+                this.bg(colors.surface_background)
+                    .when(!is_zoomed, |inner| {
+                        inner
+                            .rounded_lg()
+                            .border_1()
+                            .border_color(colors.border)
+                            .shadow_md()
+                    })
+                    .children(leader_border)
+            });
+
+        Some(dock_element)
     }
 
     pub fn for_window(window: &mut Window, _: &mut App) -> Option<Entity<Workspace>> {
@@ -6612,6 +6612,12 @@ impl Workspace {
 
     pub fn zoomed_item(&self) -> Option<&AnyWeakView> {
         self.zoomed.as_ref()
+    }
+
+    pub fn is_empty(&self, cx: &App) -> bool {
+        self.panes
+            .iter()
+            .all(|pane| pane.read(cx).items().next().is_none())
     }
 
     pub fn activate_next_window(&mut self, cx: &mut Context<Self>) {
@@ -7155,6 +7161,7 @@ impl Render for Workspace {
             .map(|(_, notification)| notification.entity_id())
             .collect::<Vec<_>>();
         let bottom_dock_layout = WorkspaceSettings::get_global(cx).bottom_dock_layout;
+        let bottom_dock_is_open = self.bottom_dock.read(cx).is_open();
 
         client_side_decorations(
             self.actions(div(), window, cx)
@@ -7164,7 +7171,7 @@ impl Render for Workspace {
                 .flex()
                 .flex_col()
                 .font(ui_font)
-                .gap_0()
+                .gap_0() // Using gap_0 for cleaner layout as per Islands theme
                 .justify_start()
                 .items_start()
                 .text_color(colors.text)
@@ -7192,9 +7199,12 @@ impl Render for Workspace {
                                         .flex()
                                         .flex_col()
                                         .h_full()
-                                        .bg(colors.title_bar_background)
+                                        .items_center()
+                                        .bg(colors.background)
+                                        .pl_3()
+                                        .pr_1()
                                         .child(self.left_sidebar_buttons.clone())
-                                )
+                        )
                                 .child(
                                     div()
                                         .flex_1()
@@ -7204,14 +7214,14 @@ impl Render for Workspace {
                                         .child(
                                             div()
                                 .id("workspace")
-                                .bg(colors.title_bar_background)
+                                .bg(colors.background)
                                 .relative()
                                 .flex_1()
                                 .w_full()
                                 .flex()
                                 .flex_col()
                                  .overflow_hidden()
-                                 .when(self.zoomed.is_none(), |this| this.p_2().gap_2())
+                                 .when(self.zoomed.is_none(), |this| this.px_2().pt_1().gap_2())
                                 .child({
                                     let this = cx.entity();
                                     canvas(
@@ -7328,7 +7338,10 @@ impl Render for Workspace {
                                             .flex()
                                             .flex_col()
                                             .h_full()
-                                            .when(self.zoomed.is_none(), |this| this.gap_2())
+                                            .when(
+                                                self.zoomed.is_none() && bottom_dock_is_open,
+                                                |this| this.gap_2(),
+                                            )
                                             .child(
                                                 div()
                                                     .flex()
@@ -7357,17 +7370,18 @@ impl Render for Workspace {
                                                             .flex_col()
                                                             .flex_1()
                                                             .overflow_hidden()
-                                                            .child(
-                                                                h_flex()
-                                                                    .flex_1()
-                                                                    .bg(colors.editor_background)
-                                                                     .when(self.zoomed.is_none(), |this| {
-                                                                         this.rounded_lg()
-                                                                             .border_1()
-                                                                             .border_color(colors.border)
-                                                                             .shadow_md()
-                                                                     })
-                                                                    .child(self.center.render(
+                                                                .child(
+                                                                         h_flex()
+                                                                              .flex_1()
+                                                                              .bg(if self.is_empty(cx) { colors.title_bar_background } else { colors.editor_background })
+                                                                              .when(self.zoomed.is_none() && !self.is_empty(cx), |this| {
+                                                                                  this.rounded_lg()
+                                                                                      .overflow_hidden()
+                                                                                      .border_1()
+                                                                                      .border_color(colors.border)
+                                                                                      .shadow_md()
+                                                                              })
+                                                                             .child(self.center.render(
                                                                         self.zoomed.as_ref(),
                                                                         &PaneRenderContext {
                                                                             follower_states:
@@ -7417,7 +7431,10 @@ impl Render for Workspace {
                                                     .flex_col()
                                                     .flex_1()
                                                     .h_full()
-                                                    .when(self.zoomed.is_none(), |this| this.gap_2())
+                                                    .when(
+                                                        self.zoomed.is_none() && bottom_dock_is_open,
+                                                        |this| this.gap_2(),
+                                                    )
                                                     .child(
                                                         div()
                                                             .flex()
@@ -7443,9 +7460,10 @@ impl Render for Workspace {
                                                                     .child(
                                                                         h_flex()
                                                                              .flex_1()
-                                                                             .bg(colors.editor_background)
-                                                                             .when(self.zoomed.is_none(), |this| {
+                                                                             .bg(if self.is_empty(cx) { colors.title_bar_background } else { colors.editor_background })
+                                                                             .when(self.zoomed.is_none() && !self.is_empty(cx), |this| {
                                                                                  this.rounded_lg()
+                                                                                     .overflow_hidden()
                                                                                      .border_1()
                                                                                      .border_color(colors.border)
                                                                                      .shadow_md()
@@ -7513,7 +7531,10 @@ impl Render for Workspace {
                                                     .flex_col()
                                                     .flex_1()
                                                     .h_full()
-                                                    .when(self.zoomed.is_none(), |this| this.gap_2())
+                                                    .when(
+                                                        self.zoomed.is_none() && bottom_dock_is_open,
+                                                        |this| this.gap_2(),
+                                                    )
                                                     .child(
                                                         div()
                                                             .flex()
@@ -7529,9 +7550,10 @@ impl Render for Workspace {
                                                                     .child(
                                                                         h_flex()
                                                                              .flex_1()
-                                                                             .bg(colors.editor_background)
-                                                                             .when(self.zoomed.is_none(), |this| {
+                                                                             .bg(if self.is_empty(cx) { colors.title_bar_background } else { colors.editor_background })
+                                                                             .when(self.zoomed.is_none() && !self.is_empty(cx), |this| {
                                                                                  this.rounded_lg()
+                                                                                     .overflow_hidden()
                                                                                      .border_1()
                                                                                      .border_color(colors.border)
                                                                                      .shadow_md()
@@ -7594,18 +7616,22 @@ impl Render for Workspace {
                                                     .flex_col()
                                                     .flex_1()
                                                     .overflow_hidden()
-                                                    .when(self.zoomed.is_none(), |this| this.gap_2())
-                                                    .child(
-                                                        h_flex()
-                                                            .flex_1()
-                                                            .bg(colors.editor_background)
-                                                            .when(self.zoomed.is_none(), |this| {
-                                                                this.rounded_lg()
-                                                                    .border_1()
-                                                                    .border_color(colors.border)
-                                                                    .shadow_md()
-                                                            })
-                                                            .child(self.center.render(
+                                                    .when(
+                                                        self.zoomed.is_none() && bottom_dock_is_open,
+                                                        |this| this.gap_2(),
+                                                    )
+                                                                .child(
+                                                                    h_flex()
+                                                                         .flex_1()
+                                                                         .bg(if self.is_empty(cx) { colors.title_bar_background } else { colors.editor_background })
+                                                                         .when(self.zoomed.is_none() && !self.is_empty(cx), |this| {
+                                                                              this.rounded_lg()
+                                                                                  .overflow_hidden()
+                                                                                  .border_1()
+                                                                                  .border_color(colors.border)
+                                                                                  .shadow_md()
+                                                                         })
+                                                                        .child(self.center.render(
                                                                 self.zoomed.as_ref(),
                                                                 &PaneRenderContext {
                                                                     follower_states:
@@ -7677,12 +7703,27 @@ impl Render for Workspace {
                                         .flex()
                                         .flex_col()
                                         .h_full()
-                                        .bg(colors.title_bar_background)
+                                        .items_center()
+                                        .bg(colors.background)
+                                        .pl_1()
+                                        .pr_3()
                                         .child(self.right_sidebar_buttons.clone())
                                 ),
                         )
                         .when(self.status_bar_visible(cx), |parent| {
-                            parent.child(self.status_bar.clone())
+                            parent.child(
+                                div()
+                                     .px_2()
+                                     .bg(colors.status_bar_background)
+                                     .child(
+                                         div()
+                                             .when(self.is_empty(cx), |this| this.invisible())
+                                             .child(self.status_bar.clone()),
+                                     ),
+                            )
+                        })
+                        .when(!self.status_bar_visible(cx), |parent| {
+                            parent.child(div().px_2().bg(colors.status_bar_background).invisible())
                         })
                         .child(self.modal_layer.clone())
                         .child(self.toast_layer.clone()),
@@ -8754,10 +8795,13 @@ pub fn client_side_decorations(
     cx: &mut App,
 ) -> Stateful<Div> {
     const BORDER_SIZE: Pixels = px(1.0);
+    // Increased rounding and shadow for Islands theme
+    const ISLANDS_ROUNDING: Pixels = px(12.0);
+    const ISLANDS_SHADOW: Pixels = px(12.0);
     let decorations = window.window_decorations();
 
     match decorations {
-        Decorations::Client { .. } => window.set_client_inset(theme::CLIENT_SIDE_DECORATION_SHADOW),
+        Decorations::Client { .. } => window.set_client_inset(ISLANDS_SHADOW),
         Decorations::Server => window.set_client_inset(px(0.0)),
     }
 
@@ -8771,35 +8815,26 @@ pub fn client_side_decorations(
             Decorations::Server => div,
             Decorations::Client { tiling, .. } => div
                 .when(!(tiling.top || tiling.right), |div| {
-                    div.rounded_tr(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                    div.rounded_tr(ISLANDS_ROUNDING)
                 })
                 .when(!(tiling.top || tiling.left), |div| {
-                    div.rounded_tl(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                    div.rounded_tl(ISLANDS_ROUNDING)
                 })
                 .when(!(tiling.bottom || tiling.right), |div| {
-                    div.rounded_br(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                    div.rounded_br(ISLANDS_ROUNDING)
                 })
                 .when(!(tiling.bottom || tiling.left), |div| {
-                    div.rounded_bl(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                    div.rounded_bl(ISLANDS_ROUNDING)
                 })
-                .when(!tiling.top, |div| {
-                    div.pt(theme::CLIENT_SIDE_DECORATION_SHADOW)
-                })
-                .when(!tiling.bottom, |div| {
-                    div.pb(theme::CLIENT_SIDE_DECORATION_SHADOW)
-                })
-                .when(!tiling.left, |div| {
-                    div.pl(theme::CLIENT_SIDE_DECORATION_SHADOW)
-                })
-                .when(!tiling.right, |div| {
-                    div.pr(theme::CLIENT_SIDE_DECORATION_SHADOW)
-                })
+                .when(!tiling.top, |div| div.pt(ISLANDS_SHADOW))
+                .when(!tiling.bottom, |div| div.pb(ISLANDS_SHADOW))
+                .when(!tiling.left, |div| div.pl(ISLANDS_SHADOW))
+                .when(!tiling.right, |div| div.pr(ISLANDS_SHADOW))
                 .on_mouse_move(move |e, window, cx| {
                     let size = window.window_bounds().get_bounds().size;
                     let pos = e.position;
 
-                    let new_edge =
-                        resize_edge(pos, theme::CLIENT_SIDE_DECORATION_SHADOW, size, tiling);
+                    let new_edge = resize_edge(pos, ISLANDS_SHADOW, size, tiling);
 
                     let edge = cx.try_global::<GlobalResizeEdge>();
                     if new_edge != edge.map(|edge| edge.0) {
@@ -8815,12 +8850,7 @@ pub fn client_side_decorations(
                     let size = window.window_bounds().get_bounds().size;
                     let pos = e.position;
 
-                    let edge = match resize_edge(
-                        pos,
-                        theme::CLIENT_SIDE_DECORATION_SHADOW,
-                        size,
-                        tiling,
-                    ) {
+                    let edge = match resize_edge(pos, ISLANDS_SHADOW, size, tiling) {
                         Some(value) => value,
                         None => return,
                     };
@@ -8837,16 +8867,16 @@ pub fn client_side_decorations(
                     Decorations::Client { tiling } => div
                         .border_color(cx.theme().colors().border)
                         .when(!(tiling.top || tiling.right), |div| {
-                            div.rounded_tr(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                            div.rounded_tr(ISLANDS_ROUNDING)
                         })
                         .when(!(tiling.top || tiling.left), |div| {
-                            div.rounded_tl(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                            div.rounded_tl(ISLANDS_ROUNDING)
                         })
                         .when(!(tiling.bottom || tiling.right), |div| {
-                            div.rounded_br(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                            div.rounded_br(ISLANDS_ROUNDING)
                         })
                         .when(!(tiling.bottom || tiling.left), |div| {
-                            div.rounded_bl(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                            div.rounded_bl(ISLANDS_ROUNDING)
                         })
                         .when(!tiling.top, |div| div.border_t(BORDER_SIZE))
                         .when(!tiling.bottom, |div| div.border_b(BORDER_SIZE))
@@ -8858,11 +8888,11 @@ pub fn client_side_decorations(
                                     h: 0.,
                                     s: 0.,
                                     l: 0.,
-                                    a: 0.4,
+                                    a: 0.25, // Reduced opacity for Islands theme
                                 },
-                                blur_radius: theme::CLIENT_SIDE_DECORATION_SHADOW / 2.,
+                                blur_radius: ISLANDS_SHADOW / 2.,
                                 spread_radius: px(0.),
-                                offset: point(px(0.0), px(0.0)),
+                                offset: point(px(0.0), px(2.0)), // Slightly offset shadow for Islands theme
                             }])
                         }),
                 })
@@ -8888,9 +8918,7 @@ pub fn client_side_decorations(
                     move |_bounds, hitbox, window, cx| {
                         let mouse = window.mouse_position();
                         let size = window.window_bounds().get_bounds().size;
-                        let Some(edge) =
-                            resize_edge(mouse, theme::CLIENT_SIDE_DECORATION_SHADOW, size, tiling)
-                        else {
+                        let Some(edge) = resize_edge(mouse, ISLANDS_SHADOW, size, tiling) else {
                             return;
                         };
                         cx.set_global(GlobalResizeEdge(edge));
