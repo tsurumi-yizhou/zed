@@ -11,6 +11,7 @@ mod persistence;
 pub mod searchable;
 mod security_modal;
 pub mod shared_screen;
+pub mod sidebar;
 mod status_bar;
 pub mod tasks;
 mod theme_preview;
@@ -23,6 +24,7 @@ mod workspace_settings;
 pub use crate::notifications::NotificationFrame;
 pub use dock::Panel;
 pub use path_list::PathList;
+pub use sidebar::{SidebarButtons, SidebarSide};
 pub use toast_layer::{ToastAction, ToastLayer, ToastView};
 
 use anyhow::{Context as _, Result, anyhow};
@@ -32,7 +34,7 @@ use client::{
     proto::{self, ErrorCode, PanelId, PeerId},
 };
 use collections::{HashMap, HashSet, hash_map};
-use dock::{Dock, DockPosition, PanelButtons, PanelHandle, RESIZE_HANDLE_SIZE};
+use dock::{Dock, DockPosition, PanelHandle, RESIZE_HANDLE_SIZE};
 use feature_flags::{AgentV2FeatureFlag, FeatureFlagAppExt};
 use futures::{
     Future, FutureExt, StreamExt,
@@ -1189,6 +1191,8 @@ pub struct Workspace {
     last_active_center_pane: Option<WeakEntity<Pane>>,
     last_active_view_id: Option<proto::ViewId>,
     status_bar: Entity<StatusBar>,
+    left_sidebar_buttons: Entity<SidebarButtons>,
+    right_sidebar_buttons: Entity<SidebarButtons>,
     modal_layer: Entity<ModalLayer>,
     toast_layer: Entity<ToastLayer>,
     titlebar_item: Option<AnyView>,
@@ -1483,16 +1487,25 @@ impl Workspace {
         let left_dock = Dock::new(DockPosition::Left, modal_layer.clone(), window, cx);
         let bottom_dock = Dock::new(DockPosition::Bottom, modal_layer.clone(), window, cx);
         let right_dock = Dock::new(DockPosition::Right, modal_layer.clone(), window, cx);
-        let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
-        let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
-        let right_dock_buttons = cx.new(|cx| PanelButtons::new(right_dock.clone(), cx));
-        let status_bar = cx.new(|cx| {
-            let mut status_bar = StatusBar::new(&center_pane.clone(), window, cx);
-            status_bar.add_left_item(left_dock_buttons, window, cx);
-            status_bar.add_right_item(right_dock_buttons, window, cx);
-            status_bar.add_right_item(bottom_dock_buttons, window, cx);
-            status_bar
+        let left_sidebar_buttons = cx.new(|cx| {
+            SidebarButtons::new(
+                SidebarSide::Left,
+                left_dock.clone(),
+                bottom_dock.clone(),
+                right_dock.clone(),
+                cx,
+            )
         });
+        let right_sidebar_buttons = cx.new(|cx| {
+            SidebarButtons::new(
+                SidebarSide::Right,
+                left_dock.clone(),
+                bottom_dock.clone(),
+                right_dock.clone(),
+                cx,
+            )
+        });
+        let status_bar = cx.new(|cx| StatusBar::new(&center_pane.clone(), window, cx));
 
         let session_id = app_state.session.read(cx).id().to_owned();
 
@@ -1591,6 +1604,8 @@ impl Workspace {
             last_active_center_pane: Some(center_pane.downgrade()),
             last_active_view_id: None,
             status_bar,
+            left_sidebar_buttons,
+            right_sidebar_buttons,
             modal_layer,
             toast_layer,
             titlebar_item: None,
@@ -1928,6 +1943,14 @@ impl Workspace {
 
     pub fn status_bar(&self) -> &Entity<StatusBar> {
         &self.status_bar
+    }
+
+    pub fn left_sidebar_buttons(&self) -> &Entity<SidebarButtons> {
+        &self.left_sidebar_buttons
+    }
+
+    pub fn right_sidebar_buttons(&self) -> &Entity<SidebarButtons> {
+        &self.right_sidebar_buttons
     }
 
     pub fn status_bar_visible(&self, cx: &App) -> bool {
@@ -7161,6 +7184,25 @@ impl Render for Workspace {
                         .flex_col()
                         .child(
                             div()
+                                .flex_1()
+                                .flex()
+                                .flex_row()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .h_full()
+                                        .bg(colors.title_bar_background)
+                                        .child(self.left_sidebar_buttons.clone())
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .flex()
+                                        .flex_col()
+                                        .h_full()
+                                        .child(
+                                            div()
                                 .id("workspace")
                                 .bg(colors.title_bar_background)
                                 .relative()
@@ -7628,6 +7670,16 @@ impl Render for Workspace {
                                     })
                                 }))
                                 .children(self.render_notifications(window, cx)),
+                                        )
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .h_full()
+                                        .bg(colors.title_bar_background)
+                                        .child(self.right_sidebar_buttons.clone())
+                                ),
                         )
                         .when(self.status_bar_visible(cx), |parent| {
                             parent.child(self.status_bar.clone())

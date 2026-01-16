@@ -310,7 +310,7 @@ impl Into<settings::DockPosition> for DockPosition {
 }
 
 impl DockPosition {
-    fn label(&self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             Self::Left => "Left",
             Self::Bottom => "Bottom",
@@ -734,6 +734,16 @@ impl Dock {
 
     pub fn panels_len(&self) -> usize {
         self.panel_entries.len()
+    }
+
+    pub fn panels(&self) -> impl Iterator<Item = &Arc<dyn PanelHandle>> {
+        self.panel_entries.iter().map(|entry| &entry.panel)
+    }
+
+    pub fn panel_index(&self, panel: &Arc<dyn PanelHandle>) -> Option<usize> {
+        self.panel_entries
+            .iter()
+            .position(|entry| entry.panel.panel_id() == panel.panel_id())
     }
 
     pub fn activate_panel(&mut self, panel_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
