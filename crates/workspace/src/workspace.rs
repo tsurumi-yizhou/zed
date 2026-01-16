@@ -6553,9 +6553,6 @@ impl Workspace {
 
         let dock_state = dock.read(cx);
         let is_open = dock_state.is_open();
-        if !is_open {
-            return None;
-        }
 
         let leader_border = dock_state.active_panel().and_then(|panel| {
             let pane = panel.pane(cx)?;
@@ -6571,15 +6568,18 @@ impl Workspace {
                 .flex()
                 .flex_none()
                 .overflow_hidden()
-                .bg(colors.surface_background)
-                .when(!is_zoomed, |this| {
-                    this.rounded_lg()
-                        .border_1()
-                        .border_color(colors.border)
-                        .shadow_md()
+                .when(is_open, |this| {
+                    this.bg(colors.surface_background)
+                        .when(!is_zoomed, |inner| {
+                            inner
+                                .rounded_lg()
+                                .border_1()
+                                .border_color(colors.border)
+                                .shadow_md()
+                        })
                 })
                 .child(dock.clone())
-                .children(leader_border),
+                .when(is_open, |this| this.children(leader_border)),
         )
     }
 
