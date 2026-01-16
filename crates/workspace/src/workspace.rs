@@ -6551,17 +6551,33 @@ impl Workspace {
             return None;
         }
 
-        let leader_border = dock.read(cx).active_panel().and_then(|panel| {
+        let dock_state = dock.read(cx);
+        let is_open = dock_state.is_open();
+        if !is_open {
+            return None;
+        }
+
+        let leader_border = dock_state.active_panel().and_then(|panel| {
             let pane = panel.pane(cx)?;
             let follower_states = &self.follower_states;
             leader_border_for_pane(follower_states, &pane, window, cx)
         });
+
+        let colors = cx.theme().colors();
+        let is_zoomed = self.zoomed.is_some();
 
         Some(
             div()
                 .flex()
                 .flex_none()
                 .overflow_hidden()
+                .bg(colors.surface_background)
+                .when(!is_zoomed, |this| {
+                    this.rounded_lg()
+                        .border_1()
+                        .border_color(colors.border)
+                        .shadow_md()
+                })
                 .child(dock.clone())
                 .children(leader_border),
         )
@@ -7093,7 +7109,7 @@ impl Render for Workspace {
                     .border_color(cx.theme().colors().pane_group_border)
             })
         };
-        let paddings = if centered_layout {
+        let _paddings = if centered_layout {
             let settings = WorkspaceSettings::get_global(cx).centered_layout;
             (
                 render_padding(Self::adjust_padding(
@@ -7146,16 +7162,14 @@ impl Render for Workspace {
                         .child(
                             div()
                                 .id("workspace")
-                                .bg(colors.background)
+                                .bg(colors.title_bar_background)
                                 .relative()
                                 .flex_1()
                                 .w_full()
                                 .flex()
                                 .flex_col()
-                                .overflow_hidden()
-                                .border_t_1()
-                                .border_b_1()
-                                .border_color(colors.border)
+                                 .overflow_hidden()
+                                 .when(self.zoomed.is_none(), |this| this.p_2().gap_2())
                                 .child({
                                     let this = cx.entity();
                                     canvas(
@@ -7272,12 +7286,14 @@ impl Render for Workspace {
                                             .flex()
                                             .flex_col()
                                             .h_full()
+                                            .when(self.zoomed.is_none(), |this| this.gap_2())
                                             .child(
                                                 div()
                                                     .flex()
                                                     .flex_row()
                                                     .flex_1()
                                                     .overflow_hidden()
+                                                    .when(self.zoomed.is_none(), |this| this.gap_2())
                                                     .children(self.render_dock(
                                                         DockPosition::Left,
                                                         &self.left_dock,
@@ -7302,14 +7318,13 @@ impl Render for Workspace {
                                                             .child(
                                                                 h_flex()
                                                                     .flex_1()
-                                                                    .when_some(
-                                                                        paddings.0,
-                                                                        |this, p| {
-                                                                            this.child(
-                                                                                p.border_r_1(),
-                                                                            )
-                                                                        },
-                                                                    )
+                                                                    .bg(colors.editor_background)
+                                                                     .when(self.zoomed.is_none(), |this| {
+                                                                         this.rounded_lg()
+                                                                             .border_1()
+                                                                             .border_color(colors.border)
+                                                                             .shadow_md()
+                                                                     })
                                                                     .child(self.center.render(
                                                                         self.zoomed.as_ref(),
                                                                         &PaneRenderContext {
@@ -7324,14 +7339,6 @@ impl Render for Workspace {
                                                                         window,
                                                                         cx,
                                                                     ))
-                                                                    .when_some(
-                                                                        paddings.1,
-                                                                        |this, p| {
-                                                                            this.child(
-                                                                                p.border_l_1(),
-                                                                            )
-                                                                        },
-                                                                    ),
                                                             ),
                                                     )
                                                     .when(cx.has_flag::<AgentV2FeatureFlag>(), |this| {
@@ -7361,17 +7368,20 @@ impl Render for Workspace {
                                             .flex()
                                             .flex_row()
                                             .h_full()
+                                            .when(self.zoomed.is_none(), |this| this.gap_2())
                                             .child(
                                                 div()
                                                     .flex()
                                                     .flex_col()
                                                     .flex_1()
                                                     .h_full()
+                                                    .when(self.zoomed.is_none(), |this| this.gap_2())
                                                     .child(
                                                         div()
                                                             .flex()
                                                             .flex_row()
                                                             .flex_1()
+                                                            .when(self.zoomed.is_none(), |this| this.gap_2())
                                                             .children(self.render_dock(DockPosition::Left, &self.left_dock, window, cx))
                                                             .when(cx.has_flag::<AgentV2FeatureFlag>(), |this| {
                                                                 this.when_some(self.utility_pane(UtilityPaneSlot::Left), |this, pane| {
@@ -7390,8 +7400,14 @@ impl Render for Workspace {
                                                                     .overflow_hidden()
                                                                     .child(
                                                                         h_flex()
-                                                                            .flex_1()
-                                                                            .when_some(paddings.0, |this, p| this.child(p.border_r_1()))
+                                                                             .flex_1()
+                                                                             .bg(colors.editor_background)
+                                                                             .when(self.zoomed.is_none(), |this| {
+                                                                                 this.rounded_lg()
+                                                                                     .border_1()
+                                                                                     .border_color(colors.border)
+                                                                                     .shadow_md()
+                                                                             })
                                                                             .child(self.center.render(
                                                                                 self.zoomed.as_ref(),
                                                                                 &PaneRenderContext {
@@ -7406,7 +7422,6 @@ impl Render for Workspace {
                                                                                 window,
                                                                                 cx,
                                                                             ))
-                                                                            .when_some(paddings.1, |this, p| this.child(p.border_l_1())),
                                                                     )
                                                             )
                                                             .when_some(self.utility_pane(UtilityPaneSlot::Right), |this, pane| {
@@ -7434,6 +7449,7 @@ impl Render for Workspace {
                                             .flex()
                                             .flex_row()
                                             .h_full()
+                                            .when(self.zoomed.is_none(), |this| this.gap_2())
                                             .children(self.render_dock(
                                                 DockPosition::Left,
                                                 &self.left_dock,
@@ -7455,11 +7471,13 @@ impl Render for Workspace {
                                                     .flex_col()
                                                     .flex_1()
                                                     .h_full()
+                                                    .when(self.zoomed.is_none(), |this| this.gap_2())
                                                     .child(
                                                         div()
                                                             .flex()
                                                             .flex_row()
                                                             .flex_1()
+                                                            .when(self.zoomed.is_none(), |this| this.gap_2())
                                                             .child(
                                                                 div()
                                                                     .flex()
@@ -7468,8 +7486,14 @@ impl Render for Workspace {
                                                                     .overflow_hidden()
                                                                     .child(
                                                                         h_flex()
-                                                                            .flex_1()
-                                                                            .when_some(paddings.0, |this, p| this.child(p.border_r_1()))
+                                                                             .flex_1()
+                                                                             .bg(colors.editor_background)
+                                                                             .when(self.zoomed.is_none(), |this| {
+                                                                                 this.rounded_lg()
+                                                                                     .border_1()
+                                                                                     .border_color(colors.border)
+                                                                                     .shadow_md()
+                                                                             })
                                                                             .child(self.center.render(
                                                                                 self.zoomed.as_ref(),
                                                                                 &PaneRenderContext {
@@ -7484,7 +7508,6 @@ impl Render for Workspace {
                                                                                 window,
                                                                                 cx,
                                                                             ))
-                                                                            .when_some(paddings.1, |this, p| this.child(p.border_l_1())),
                                                                     )
                                                             )
                                                             .when(cx.has_flag::<AgentV2FeatureFlag>(), |this| {
@@ -7509,6 +7532,7 @@ impl Render for Workspace {
                                             .flex()
                                             .flex_row()
                                             .h_full()
+                                            .when(self.zoomed.is_none(), |this| this.gap_2())
                                             .children(self.render_dock(
                                                 DockPosition::Left,
                                                 &self.left_dock,
@@ -7528,11 +7552,16 @@ impl Render for Workspace {
                                                     .flex_col()
                                                     .flex_1()
                                                     .overflow_hidden()
+                                                    .when(self.zoomed.is_none(), |this| this.gap_2())
                                                     .child(
                                                         h_flex()
                                                             .flex_1()
-                                                            .when_some(paddings.0, |this, p| {
-                                                                this.child(p.border_r_1())
+                                                            .bg(colors.editor_background)
+                                                            .when(self.zoomed.is_none(), |this| {
+                                                                this.rounded_lg()
+                                                                    .border_1()
+                                                                    .border_color(colors.border)
+                                                                    .shadow_md()
                                                             })
                                                             .child(self.center.render(
                                                                 self.zoomed.as_ref(),
@@ -7548,9 +7577,6 @@ impl Render for Workspace {
                                                                 window,
                                                                 cx,
                                                             ))
-                                                            .when_some(paddings.1, |this, p| {
-                                                                this.child(p.border_l_1())
-                                                            }),
                                                     )
                                                     .children(self.render_dock(
                                                         DockPosition::Bottom,
